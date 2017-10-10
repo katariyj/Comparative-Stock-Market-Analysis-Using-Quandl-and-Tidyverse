@@ -1,0 +1,307 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Comparative Stock Market Analysis Using Quandl and Tidyverse
+
+Objective- Analyze banking stocks listed on NSE India to find trend, seasonality and cyclicity. 
+
+
+Part  1 - Installing packages 
+```{r}
+packs <- c( "Quandl","Sweep", "timetk", "tidyverse", "tidyquant","ggplot2", "gganimate", "forcats", "stringr")
+
+# install.packages(packs, dependencies = TRUE)
+#install.packages("tidyverse")
+#if(!require(devtools)) install.packages("devtools")
+#devtools::install_github("dgrtwo/gganimate")
+```
+
+
+```{r}
+library(Quandl)
+library(tidyverse)
+library(ggplot2)
+library(tidyquant)
+library(timetk)
+library(forcats)
+library(stringr)
+library(gganimate)
+library(plyr)
+library(stringr)
+library(gridExtra)
+```
+
+Part 2 - Get the data from Quandl
+We will be using Quandl is online repository for the core financial, macroeconomic statistics and forex. Quandl has a vast collection of free and open data collected from a variety of organizations: central banks, governments, multinational organizations and more. You can use it without payment and with few restrictions.
+
+In our analysis, we have selected following banks
+
+ICICI
+BOB
+CANARA
+AXIS
+SBI
+PNB
+We have selected these banks as they are in the price band of Rs 200 to Rs 500. We will use the following codes to get the data into R console.
+
+Using my API
+```{r}
+
+Quandl.api_key("enter_your_key")
+```
+
+```{r}
+ICICI = Quandl("NSE/ICICIBANK",collapse="daily",start_date="2016-09-01",type="raw")
+
+PNB= Quandl("NSE/PNB",collapse="daily",start_date="2016-09-01",type="raw")
+
+Axis=Quandl("NSE/AXISBANK",collapse="daily",start_date="2016-09-01",type="raw")
+
+Canara=Quandl("NSE/CANBK",collapse="daily",start_date="2016-09-01",type="raw")
+
+BOB=Quandl("NSE/BANKBARODA",collapse="daily",start_date="2016-09-01",type="raw")
+
+SBI=Quandl("NSE/SBIN",collapse="daily",start_date="2016-09-01",type="raw")
+```
+
+Add another ("Stock") coloumn in Datasets using cbind command
+
+```{r}
+ICICI<-cbind(ICICI,Stock="")
+
+PNB<-cbind(PNB,Stock="")
+
+Axis<-cbind(Axis,Stock="")
+
+SBI<-cbind(SBI,Stock="")
+
+Canara<-cbind(Canara,Stock="")
+
+BOB<-cbind(BOB,Stock="")
+
+```
+
+Give columns their name by using paste function 
+
+```{r}
+ICICI$Stock<-paste(ICICI$Stock,"ICICI",sep="")
+
+PNB$Stock<-paste(PNB$Stock,"PNB",sep="")
+
+Axis$Stock<-paste(Axis$Stock,"Axis",sep="")
+
+SBI$Stock<-paste(SBI$Stock,"SBI",sep="")
+
+Canara$Stock<-paste(Canara$Stock,"Canara",sep="")
+
+BOB$Stock<-paste(BOB$Stock,"BOB",sep="")
+```
+
+Consolidate under one dataset
+
+```{r}
+Banks <- rbind(ICICI,PNB,Axis,SBI,Canara,BOB)
+```
+
+Part 2 - Transformation and feature engineering 
+
+Before visualising monthly data we need to convert dates into charater format. For this we split the coloumn into "Y" "m" "dd"" columns
+
+```{r}
+
+Banks$Date <- as.character(Banks$Date)
+list <- strsplit(Banks$Date,"-")
+
+library(plyr)
+
+Banks_date <- ldply(list)
+
+colnames(Banks_date) <- c("Year", "Month", "Day")
+head(Banks_date)
+
+```
+Column bind with the main dataframe 
+
+```{r}
+Banks <- cbind(Banks, Banks_date)
+names(Banks)
+```
+
+Change the scale for Traded Quantity
+
+```{r}
+Banks$`Total Trade Quantity` <- Banks$`Total Trade Quantity`/100000
+```
+
+Convert the Date to as.Date()
+
+```{r}
+Banks$Date <- as.Date(Banks$Date)
+```
+
+Part 3 - Visualization of monthly prices
+Visualisation with Bubble Plot
+
+```{r}
+bank_bubble <- ggplot(Banks, aes(factor(Stock), Close, color=Stock, frame = Month)) + 
+  geom_jitter(aes(size=Close, color = Stock, alpha = 0.02))+
+  ylim(0,1000)+
+  labs(title = "Monthly Prices of Indian Banks", x = "Banks", y = "Close Price")+
+  theme(panel.border = element_blank(),
+        panel.grid.major = element_line(color = "grey61", size = 0.5, linetype = "dotted"),
+        panel.grid.minor = element_blank(),
+        axis.line=element_line(color="black"),
+        plot.title = element_text(hjust = 0.5,size=18,color="indianred4")) + 
+  theme(legend.position = "none")
+bank_bubble
+
+bank_bubble_ani <- gganimate(bank_bubble, title_frame = TRUE)
+
+bank_bubble_ani
+(bank_bubble, "Price_Range.gif", ani.width = 600, ani.height = 400, interval=1)
+```
+Group By Stock Using tibble from tidyverse
+
+```{r}
+Banks<- Banks%>%
+  tibble::as.tibble()%>%
+  group_by(Stock)
+```
+
+Visualisation for Daily Stock Prices
+
+```{r}
+Banks %>%
+  ggplot(aes(x=Date, y = Close, color = Stock))+
+  geom_point()+ 
+   labs(title = "Daily Close Price", x = "Month",y="Close Price") +
+  facet_wrap(~ Stock, ncol = 3, scale = "free_y") +
+  scale_fill_tq(fill="green4",theme="light") +
+  theme_tq() +
+  theme(panel.border = element_blank(),
+        panel.grid.major = element_line(color = "grey61", size = 0.5, linetype = "dotted"),
+        panel.grid.minor = element_blank(),
+        axis.line=element_line(color="black"),
+        plot.title = element_text(hjust = 0.5,size=18,color="indianred4"))+
+  theme(legend.position="none")
+```
+
+Discovering the Relation between Total Traded Quantity vs Close Price
+
+```{r}
+z<- Banks %>%
+  ggplot(aes(x = `Total Trade Quantity`, y = Close, color = Stock,frame=Month)) +
+  geom_smooth(method='loess') +
+  xlim(0,400)+
+  labs(title = "Monthly Traded Quantity vs Price", x = "Traded Quantity (Lacs)",y="Close Price") +
+  facet_wrap(~ Stock, ncol = 3, scale = "free_y") +
+  scale_fill_tq(fill="green4",theme="light") +
+  theme_tq() +
+  theme(panel.border = element_blank(),
+        panel.grid.major = element_line(color = "grey61", size = 0.5, linetype = "dotted"),
+        panel.grid.minor = element_blank(),
+        axis.line=element_line(color="black"),
+        plot.title = element_text(hjust = 0.5,size=18,color="indianred4"))+
+  theme(legend.position="none")
+
+z1<-gganimate(z,'Quantity_Price.gif',ani.width=600,ani.height=400,interval=0.7)
+
+z1
+```
+
+We have an idea of trend of the stock price, but not much is clear from the Monthly prices. Axis Bank share price improved in september and stayed at Rs750 for a month. whereas all other Banks were consistent and did not show much of volatility.
+
+Finding the Density Distribution of Deviation of High Price from Open Price
+
+Now we will see the density distribution of High Price from Open Price in order to get an understanding that how much price is deviating in either direction (North or South) on weekly basis. This gives us an idea of price range for any stock in intraday trading.
+
+We will use the transmute_tq() function from tidyquant package to compute the weekly prices.
+
+For this add a new column with the difference of high and open price using mutate function. Add another new column with the difference of low and open price using mutate function. Calculate the weekly average of differences using "tq_transmute()" function from tidyverse package. Visualize both density plots with dot distribution on ggplot. 
+
+Deviation from High & Low Price
+
+```{r}
+Banks_high <- Banks%>%mutate(Dev_high=High - Open)
+Banks_Low <- Banks%>%mutate(Dev_Low= Open - Low)
+```
+
+Computation of weekly average for high Price
+
+```{r}
+Banks_High_Week <- Banks_high %>%
+  tq_transmute(
+    
+    select = Dev_high, 
+    
+    mutate_fun = apply.weekly, 
+    
+    FUN = mean, 
+    
+    na.rm = TRUE, 
+    
+    col_rename = "Dev_High_Mean"
+  )
+```
+
+ Computation weekly average for Low Price
+ 
+```{r}
+Banks_Low_Week <- Banks_Low %>%
+  tq_transmute(
+    
+    select = Dev_Low, 
+    
+    mutate_fun = apply.weekly, 
+    
+    FUN = mean, 
+    
+    na.rm = TRUE, 
+    
+    col_rename = "Dev_Low_Mean"
+  )
+```
+
+Visualisation of density distribution of High Price
+
+```{r}
+High <- Banks_High_Week%>%ggplot(aes(x=Dev_High_Mean,color=Stock))+
+  geom_dotplot(binwidth=0.50,aes(fill=Stock))+
+  xlim(0,10)+
+  scale_fill_manual(values=c("#999999", "#E69F00","#CC9933","#99FF00","#CC3399","#FF9933"))+
+  labs(title="Distribution of High Price Deviation from Open Price",x="Weekly Mean Deviation")+
+  facet_wrap(~Stock,ncol=3,scale="free_y")+
+  scale_color_tq(values=c("#999999"))+
+  theme_tq()+
+  theme(panel.border = element_blank(),
+        panel.grid.major = element_line(color = "grey61", size = 0.5, linetype = "dotted"),
+        panel.grid.minor = element_blank(),
+        axis.line=element_line(color="black"),
+        plot.title = element_text(hjust = 0.5,size=16,color="indianred4"))+
+  theme(legend.position="none")
+
+High
+```
+
+Visualisation of density distribution of Low Price
+```{r}
+Low <- Banks_Low_Week%>%ggplot(aes(x=Dev_Low_Mean,color=Stock))+
+  geom_dotplot(binwidth=0.50,aes(fill=Stock))+
+  xlim(0,10)+
+  scale_fill_manual(values=c("#999999", "#E69F00","#CC9933","#99FF00","#CC3399","#FF9933"))+
+  labs(title="Distribution of Weekly Low Price Deviation from Open Price",x="Weekly Mean Deviation")+
+  facet_wrap(~Stock,ncol=3,scale="free_y")+
+  scale_color_tq(values=c("#999999"))+
+  theme_tq()+
+  theme(panel.border = element_blank(),
+        panel.grid.major = element_line(color = "grey61", size = 0.5, linetype = "dotted"),
+        panel.grid.minor = element_blank(),
+        axis.line=element_line(color="black"),
+        plot.title = element_text(hjust = 0.5,size=16,color="indianred4"))+
+  theme(legend.position="none")
+
+Low
+```
+
